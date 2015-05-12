@@ -1,0 +1,95 @@
+##!/usr/bin/env ruby
+# vim:set fileencoding=utf-8 ts=2 sw=2 sts=2 et:
+
+require 'pp'
+require 'tapp'
+require 'csv'
+
+#ENCODING = Encoding::WINDOWS_31J
+ENCODING = Encoding::SJIS
+
+INTERNAL_ENCODING = Encoding::UTF_8
+INPUT_FILE = 'seiseki/sample_input.csv'
+
+#ENCODING = Encoding::UTF_8
+#INPUT_FILE = 'input_utf.csv'
+OUTPUT_FILE = 'sample_output.csv'
+
+HEADER_NAME = '生徒氏名'
+HEADER_TOTAL = '合計'
+
+def main
+  students, subject_headers = parse_students
+  fill_orders_to(students) 
+  #write_students(students)
+  headers = [HEADER_NAME, *subject_headers, HEADER_TOTAL]
+  #CSV.open(OUTPUT_FILE, "wb", encoding: ENCODING, headers: headers, write_headers: true){|csv|
+  CSV.open(OUTPUT_FILE, "wb", external_encoding: ENCODING, internal_encoding: INTERNAL_ENCODING, headers: headers, write_headers: true){|csv|
+    students.each do |student|
+      csv << [
+        student.name,
+        *subject_headers.map{|subject| student.orders[subject]},
+        student.orders[HEADER_TOTAL],
+      ]
+    end
+  }
+end
+
+def fill_orders_to(students)
+  return students if students.empty?
+  subject_headers = students.first.scores.keys
+
+  subject_headers.each do |subject|
+    fill_an_order_to(students, subject)
+  end
+  pp students
+end
+
+def fill_an_order_to(students, subject)
+  sorted_students = students.sort_by{|student| student.scores[subject]}
+  previous_score = nil
+  previous_order = nil
+  
+  sorted_students.reverse_each.each_with_index do |student, index|
+    student_count = index + 1
+    score = student.scores[subject]
+
+    order = (score == previous_score) ? previous_order : student_count
+    student.orders[subject] = order
+    
+    previous_score = score
+    previous_order = order
+  end
+end
+
+
+def parse_students
+  table = CSV.readlines(INPUT_FILE, encoding: ENCODING, headers: true, return_headers: false, converters: :integer)
+  input_headers = table.headers
+  subject_headers = input_headers - [HEADER_NAME] # 科目名のヘッダ
+
+  students = table.each_with_index.map{|row, index|
+    student = Student.new
+    student.id = index + 1
+    student.name = row[HEADER_NAME]
+    student.scores = {}
+    subject_headers.each do |subject|
+      student.scores[subject] = row[subject]
+    end
+    student.scores[HEADER_TOTAL] = subject_headers.map{|subject| row[subject].to_i}.inject(0, &:+)
+
+    student.orders = {}
+
+    next student
+  }
+
+  return students ,subject_headers
+end
+
+
+class Student < Struct.new(:id, :name, :scores, :orders); end
+
+if $0 == __FILE__
+  main
+end
+
